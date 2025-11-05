@@ -14,20 +14,42 @@ app.use((req, res, next) => {
   next();
 });
 
-// Configure CORS with specific options
-app.use(cors({
-  origin: (origin, callback) => {
-    // Allow any localhost origin during development
-    if (!origin || origin.startsWith('http://localhost:')) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
-}));
+// Custom CORS handling so we can support multiple allowed origins
+// Configure allowed origins via environment variable (comma-separated)
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || '')
+  .split(',')
+  .map(s => s.trim())
+  .filter(Boolean);
+
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+
+  // If no origin (curl, server-to-server), allow the request
+  if (!origin) return next();
+
+  // If no configured origins, allow any origin (useful for quick dev)
+  if (allowedOrigins.length === 0) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization');
+    if (req.method === 'OPTIONS') return res.sendStatus(204);
+    return next();
+  }
+
+  // Otherwise only allow requests from configured origins
+  if (allowedOrigins.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization');
+    if (req.method === 'OPTIONS') return res.sendStatus(204);
+    return next();
+  }
+
+  // Not allowed by CORS
+  res.status(403).json({ message: 'CORS policy: This origin is not allowed' });
+});
 
 app.use(express.json());
 
